@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 2 testing complete. Tested admin auth (login/me), all admin CRUD endpoints (list/stats/patch/delete), DB admin seed (bcrypt $2b$), SEO static files (sitemap.xml/robots.txt/og-default.png/index.html meta), and full admin UI flow (login → dashboard → stats → filters → search → status update → delete with confirm → logout → protected-route redirect). Regression: public POST /api/enquiry now correctly returns 201 with status='new', GET /api/enquiries lists all items with status field, Helmet sets unique titles per public page. 24/24 backend pytest tests pass; 12/12 frontend Playwright assertions pass. No critical issues.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/login", "issue": "No brute-force lockout / rate-limit. Playbook recommends locking after 5 failed attempts. Not in the iteration-2 feature scope but worth adding."},
+      {"endpoint": "POST /api/auth/login", "issue": "Auth uses Bearer token in localStorage (not httpOnly cookie). Acceptable per implementation choice, but susceptible to XSS token theft — note for future hardening."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin (logged-in dashboard)", "issues": ["StatCard renders '—' briefly while stats are loading (initial render before fetch resolves). Minor UX polish: show skeleton/'0' instead of em-dash."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Add login rate-limit / account-lockout after 5 failed attempts on POST /api/auth/login.",
+    "(Optional) Replace em-dash placeholder on stat cards with '0' or skeleton during initial load.",
+    "Note: required a one-time `supervisorctl restart frontend` for the updated /public/index.html (og:image, twitter:card) to be served — CRA only bundles public/ on (re)start, so future edits to index.html need a frontend restart."
+  ],
+  "critical_code_review_comments": [
+    "auth.py: bcrypt + JWT (HS256) implemented correctly; seed_admin is idempotent and updates hash if ADMIN_PASSWORD in .env changes. Verified $2b$ prefix in DB.",
+    "server.py: All admin routes correctly gated by Depends(require_admin); MongoDB _id excluded via projection in every read path. /api/enquiry POST returns 201 with default status='new'. Startup backfill ensures legacy rows get a status.",
+    "auth.js (frontend): Bearer token persisted in localStorage under 'dlas_admin_token'; 401 on any admin call correctly clears token and routes to /admin/login. formatApiErrorDetail handles FastAPI 422 array detail safely.",
+    "AdminDashboard.jsx: useMemo for client-side filter/search is efficient; native window.confirm used for delete (functional but not branded — consider shadcn AlertDialog later).",
+    "sitemap.xml & robots.txt are static under frontend/public/; both served at root with correct content. og-default.png served at /images/og-default.png (image/png).",
+    "Helmet titles unique per page verified at runtime: '/'='Dream\\'s Latkans & Laces — Wholesale, Mumbai', '/products'='Wholesale Products — …', '/about'='About Us — …', '/contact'='Contact Us — …'."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_api.py (extended from 6 to 24 tests: added auth + admin CRUD + DB seed + SEO assertions; fixed pre-existing test that expected 200 to expect 201)"
+  ],
+  "success_rate": {"backend": "100% (24/24)", "frontend": "100% (12/12 flows)"},
+  "test_credentials": "admin@dreamslatkans.com / Dreams@2026 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Tests create/delete TEST_-prefixed enquiries within each test (full create→patch→delete lifecycle). One enquiry was deleted by the UI test via the delete button (cardId 6d9b8d12-...).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend test suite at /app/backend/tests/test_api.py is the canonical regression set (run with `REACT_APP_BACKEND_URL=... pytest backend/tests/test_api.py`). Admin token endpoint: POST /api/auth/login → { token, email, role }; pass as Authorization: Bearer <token>. Token stored in localStorage key 'dlas_admin_token'. Sitemap has 4 URLs; robots.txt disallows /admin. index.html OG/Twitter tags require a frontend restart to refresh (CRA bundles public/ at start). Public URL: https://dreams-wholesale-1.preview.emergentagent.com.",
+  "rca of the issue": "Initial pytest run showed test_index_html_has_og_image_and_twitter_card failing because the React dev server was serving a cached /index.html from before the SEO meta tags were added. CRA's webpack dev server reads public/index.html at server start and does not hot-reload changes to it. Fix: `sudo supervisorctl restart frontend` reloaded the new file and the served HTML then included og:image, og:image:width/height, twitter:card, twitter:image. After the restart all 24 tests pass."
+}

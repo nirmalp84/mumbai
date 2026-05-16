@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 3 deep test (rate-limit, CSV export, email graceful fallback) + brief regression — ALL PASS. Backend: 9/9 new + 24/24 regression (33/33 total). Frontend: 6/6 flows including UI rate-limit message, Export CSV button + actual file download verified, full public site regression (/, /products with 20 imgs, /contact with correct Helmet titles). No critical or minor issues found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration3.py",
+    "/app/backend/tests/test_api.py",
+    "/app/test_reports/pytest/iteration3_results.xml",
+    "/app/test_reports/pytest/regression_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "auth.py: check_lockout uses identifier `ip:email`, queries db.login_attempts with $gte window — correct sliding-window logic. record_attempt clears failed attempts on success (delete_many ok:false). LOGIN_MAX_ATTEMPTS / LOGIN_LOCKOUT_MINUTES read from env each call (good for hot-reload).",
+    "server.py: POST /auth/login flow is correct — check_lockout BEFORE password verify, record_attempt(ok=False) on bad creds (raises 401), record_attempt(ok=True) on success. 429 with Retry-After header surfaces all the way through CORS (verified in UI).",
+    "server.py: GET /admin/enquiries.csv uses StreamingResponse with text/csv + Content-Disposition; filename strftime '%Y%m%d-%H%M%S' (verified `dlas-enquiries-20260516-114022.csv`). CSV header row matches spec exactly. _id excluded via projection.",
+    "server.py: POST /api/enquiry uses asyncio.create_task(send_enquiry_notification(doc)) — truly fire-and-forget; measured POST elapsed < 0.5s in tests.",
+    "emailer.py: _enabled() requires both `resend` import AND key starting with 're_' — perfect graceful fallback. send_enquiry_notification returns dict in all paths (try/except), never raises. Logs 'emailer disabled (no RESEND_API_KEY)' when key empty — verified in /var/log/supervisor/backend.*.log.",
+    "AdminDashboard.jsx: Export CSV uses fetch with Authorization header (not <a href>), creates Blob -> ObjectURL -> programmatic <a>.click() -> revokes URL — proper auth-aware download pattern. data-testid='admin-export-csv-btn' present.",
+    "Note: identifier uses x-forwarded-for first value; behind a multi-hop proxy, attackers could spoof XFF. Acceptable for this preview but consider trusting only the rightmost hop in production."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration3.py (NEW — 9 tests covering rate-limit/CSV/emailer fallback)"
+  ],
+  "success_rate": {"backend": "100% (33/33: 9 iter3 + 24 regression)", "frontend": "100% (6/6 flows)"},
+  "test_credentials": "admin@dreamslatkans.com / Dreams@2026 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Tests create TEST_-prefixed enquiries and clean them up. db.login_attempts collection cleaned between rate-limit tests via clean_attempts fixture, and after the run via mongosh.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Two backend test files: /app/backend/tests/test_api.py (24 regression) and /app/backend/tests/test_iteration3.py (9 iter3). MUST run `mongosh test_database --eval 'db.login_attempts.deleteMany({})'` before/between rate-limit test runs to prevent bleed-over (the test_iteration3 clean_attempts fixture already does this). RESEND_API_KEY is intentionally empty; emailer logs 'emailer disabled (no RESEND_API_KEY)' — this is verified, not a bug. Frontend Export CSV uses Blob + ObjectURL pattern (auth-aware), not a plain <a href>. Public URL from env: https://dreams-wholesale-1.preview.emergentagent.com.",
+  "rca of the issue": "No issues found. Notable observations: (1) Playwright's download.suggested_filename came as 'dlas-enquiries-2026-05-16T11-40-01.csv' (Playwright sanitization for cross-platform paths) but the server's actual Content-Disposition header has the correct strftime format `dlas-enquiries-20260516-114022.csv` — confirmed via direct curl. Not a bug. (2) Frontend correctly surfaces the 429 'Too many failed login attempts. Try again in 15 minutes.' message via formatApiErrorDetail. (3) Enquiry POST measured under 0.5s with email fire-and-forget background task — non-blocking confirmed."
+}
